@@ -1,0 +1,294 @@
+@page "/compare"
+@rendermode InteractiveServer
+@using SolunumProjesi.Models
+@using SolunumProjesi.Services
+@inject AtakKaydiCsvService CsvService
+@inject MLModelService MlService
+
+<PageTitle>Karşılaştırma Analizi</PageTitle>
+
+<style>
+    .compare-container { padding: 24px; max-width: 1400px; margin: 0 auto; }
+
+    .compare-header { margin-bottom: 28px; }
+    .compare-header h1 { font-size: 1.8rem; color: #e2e8f0; margin: 0 0 6px 0; }
+    .compare-header p { color: #718096; margin: 0; }
+
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 28px; }
+
+    .stat-card {
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 12px;
+        padding: 20px;
+        text-align: center;
+    }
+    .stat-label { font-size: 12px; color: #718096; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+    .stat-value { font-size: 2rem; font-weight: 700; margin-bottom: 4px; }
+    .stat-sub { font-size: 12px; color: #718096; }
+    .stat-green { color: #48bb78; }
+    .stat-blue { color: #63b3ed; }
+    .stat-purple { color: #b794f4; }
+    .stat-orange { color: #f6ad55; }
+
+    .filter-bar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+    .filter-btn {
+        padding: 6px 16px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.15);
+        background: transparent; color: #a0aec0; cursor: pointer; font-size: 13px; transition: all 0.2s;
+    }
+    .filter-btn:hover, .filter-btn.active { background: rgba(99,179,237,0.15); color: #63b3ed; border-color: #63b3ed; }
+
+    .compare-table { width: 100%; border-collapse: collapse; }
+    .compare-table th {
+        text-align: left; padding: 12px 16px; font-size: 12px; text-transform: uppercase;
+        letter-spacing: 0.05em; color: #718096; border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    .compare-table td { padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 14px; }
+    .compare-table tr:hover td { background: rgba(255,255,255,0.03); }
+
+    .match-icon { font-size: 16px; }
+
+    .badge { display:inline-block; padding:3px 10px; border-radius:12px; font-size:12px; font-weight:600; }
+    .badge-success { background:rgba(72,187,120,0.2); color:#48bb78; border:1px solid rgba(72,187,120,0.3); }
+    .badge-warning { background:rgba(246,173,85,0.2); color:#f6ad55; border:1px solid rgba(246,173,85,0.3); }
+    .badge-danger  { background:rgba(252,129,74,0.2); color:#fc814a; border:1px solid rgba(252,129,74,0.3); }
+    .badge-default { background:rgba(160,174,192,0.15); color:#a0aec0; border:1px solid rgba(160,174,192,0.2); }
+    .badge-ai      { background:rgba(183,148,244,0.2); color:#b794f4; border:1px solid rgba(183,148,244,0.3); }
+
+    .empty-notice { text-align:center; padding:60px 20px; color:#4a5568; }
+    .empty-notice svg { margin-bottom: 16px; opacity: 0.4; }
+    .empty-notice p { margin: 0; font-size: 15px; }
+
+    .table-wrap { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; overflow:hidden; }
+
+    .note-box { background:rgba(99,179,237,0.08); border:1px solid rgba(99,179,237,0.2); border-radius:8px; padding:12px 16px; margin-bottom:20px; font-size:13px; color:#90cdf4; }
+</style>
+
+<div class="compare-container">
+    <div class="compare-header">
+        <h1>Karşılaştırma Analizi</h1>
+        <p>Uzman etiketi, ML modeli tahmini ve Gemini AI çıktısının karşılaştırması.</p>
+    </div>
+
+    @if (Veriler == null || !Veriler.Any())
+    {
+        <div class="empty-notice">
+            <svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            <p>Karşılaştırma yapabilmek için önce Ana Sayfa'dan bir CSV dosyası yükleyin.</p>
+        </div>
+    }
+    else
+    {
+        <!-- İstatistik Kartları -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Toplam Kayıt</div>
+                <div class="stat-value stat-blue">@Veriler.Count</div>
+                <div class="stat-sub">hasta verisi</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-label">ML Modeli Doğruluğu</div>
+                <div class="stat-value stat-green">%@((MlUzmanUyum * 100).ToString("F0"))</div>
+                <div class="stat-sub">@MlUzmanUyumSayi / @Veriler.Count kayıt uyumlu</div>
+            </div>
+
+            @if (GeminiAnalizSayi > 0)
+            {
+                <div class="stat-card">
+                    <div class="stat-label">Gemini Doğruluğu</div>
+                    <div class="stat-value stat-purple">%@((GeminiUzmanUyum * 100).ToString("F0"))</div>
+                    <div class="stat-sub">@GeminiAnalizSayi kayıttan @GeminiUzmanUyumSayi uyumlu</div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-label">ML vs Gemini Uyumu</div>
+                    <div class="stat-value stat-orange">%@((MlGeminiUyum * 100).ToString("F0"))</div>
+                    <div class="stat-sub">@GeminiAnalizSayi kayıttan @MlGeminiUyumSayi uyumlu</div>
+                </div>
+            }
+            else
+            {
+                <div class="stat-card">
+                    <div class="stat-label">Gemini Analizi</div>
+                    <div class="stat-value" style="color:#4a5568; font-size:1.2rem;">Beklemede</div>
+                    <div class="stat-sub">Ana sayfadan kayıt analiz edin</div>
+                </div>
+            }
+        </div>
+
+        @if (GeminiAnalizSayi == 0)
+        {
+            <div class="note-box">
+                ℹ️ Gemini sütunu henüz boş. Ana Sayfa'da kayıtlara tıklayıp "Gemini Analizini Başlat" butonuna basarak Gemini çıktılarını doldurabilirsiniz, ardından bu sayfaya geri dönün.
+            </div>
+        }
+
+        <!-- Filtre -->
+        <div class="filter-bar">
+            <button class="filter-btn @(aktifFiltre == "hepsi" ? "active" : "")" @onclick='() => AktifFiltreyiDegistir("hepsi")'>Tümü (@Veriler.Count)</button>
+            <button class="filter-btn @(aktifFiltre == "ml_yanlis" ? "active" : "")" @onclick='() => AktifFiltreyiDegistir("ml_yanlis")'>ML Yanlış (@MlYanlisCount)</button>
+            @if (GeminiAnalizSayi > 0)
+            {
+                <button class="filter-btn @(aktifFiltre == "gemini_yanlis" ? "active" : "")" @onclick='() => AktifFiltreyiDegistir("gemini_yanlis")'>Gemini Yanlış (@GeminiYanlisCount)</button>
+                <button class="filter-btn @(aktifFiltre == "her_ikisi_yanlis" ? "active" : "")" @onclick='() => AktifFiltreyiDegistir("her_ikisi_yanlis")'>Her İkisi Yanlış (@HerIkisiYanlisCount)</button>
+                <button class="filter-btn @(aktifFiltre == "tam_uyum" ? "active" : "")" @onclick='() => AktifFiltreyiDegistir("tam_uyum")'>Tam Uyum (@TamUyumCount)</button>
+            }
+        </div>
+
+        <!-- Tablo -->
+        <div class="table-wrap">
+            <table class="compare-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Peak Flow</th>
+                        <th>Semptomlar</th>
+                        <th>Uzman Etiketi</th>
+                        <th>ML Modeli</th>
+                        <th>ML ✓?</th>
+                        <th>Gemini AI</th>
+                        <th>Gemini ✓?</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var kayit in FiltreLi)
+                    {
+                        bool mlUyum = string.Equals(kayit.MLEtiketi, kayit.UzmanEtiketi, StringComparison.OrdinalIgnoreCase);
+                        bool geminiVar = !string.IsNullOrEmpty(kayit.AIEtiketi);
+                        bool geminiUyum = geminiVar && string.Equals(kayit.AIEtiketi, kayit.UzmanEtiketi, StringComparison.OrdinalIgnoreCase);
+
+                        <tr>
+                            <td><strong>#@kayit.Id</strong></td>
+                            <td>@kayit.PeakFlowValue</td>
+                            <td style="font-size:12px; color:#718096; max-width:200px;">@kayit.Semptomlar</td>
+                            <td><span class="badge @GetBadgeClass(kayit.UzmanEtiketi)">@kayit.UzmanEtiketi</span></td>
+                            <td>
+                                @if (!string.IsNullOrEmpty(kayit.MLEtiketi))
+                                {
+                                    <span class="badge @GetBadgeClass(kayit.MLEtiketi)">@kayit.MLEtiketi</span>
+                                }
+                                else
+                                {
+                                    <span style="color:#4a5568;">—</span>
+                                }
+                            </td>
+                            <td class="match-icon">
+                                @if (!string.IsNullOrEmpty(kayit.MLEtiketi))
+                                {
+                                    <span style="color: @(mlUyum ? "#48bb78" : "#fc814a");">@(mlUyum ? "✔" : "✘")</span>
+                                }
+                                else
+                                {
+                                    <span style="color:#4a5568;">—</span>
+                                }
+                            </td>
+                            <td>
+                                @if (geminiVar)
+                                {
+                                    <span class="badge badge-ai">@kayit.AIEtiketi</span>
+                                }
+                                else
+                                {
+                                    <span style="color:#4a5568; font-size:12px;">Analiz edilmedi</span>
+                                }
+                            </td>
+                            <td class="match-icon">
+                                @if (geminiVar)
+                                {
+                                    <span style="color: @(geminiUyum ? "#48bb78" : "#fc814a");">@(geminiUyum ? "✔" : "✘")</span>
+                                }
+                                else
+                                {
+                                    <span style="color:#4a5568;">—</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    private List<AtakKaydi> Veriler => CsvService.GuncelVeriler ?? new();
+    private string aktifFiltre = "hepsi";
+
+    // --- İstatistikler ---
+    private int GeminiAnalizSayi => Veriler.Count(v => !string.IsNullOrEmpty(v.AIEtiketi));
+
+    private int MlUzmanUyumSayi => Veriler.Count(v =>
+        !string.IsNullOrEmpty(v.MLEtiketi) &&
+        string.Equals(v.MLEtiketi, v.UzmanEtiketi, StringComparison.OrdinalIgnoreCase));
+
+    private float MlUzmanUyum => Veriler.Any() ? (float)MlUzmanUyumSayi / Veriler.Count : 0f;
+
+    private int GeminiUzmanUyumSayi => Veriler.Count(v =>
+        !string.IsNullOrEmpty(v.AIEtiketi) &&
+        string.Equals(v.AIEtiketi, v.UzmanEtiketi, StringComparison.OrdinalIgnoreCase));
+
+    private float GeminiUzmanUyum => GeminiAnalizSayi > 0 ? (float)GeminiUzmanUyumSayi / GeminiAnalizSayi : 0f;
+
+    private int MlGeminiUyumSayi => Veriler.Count(v =>
+        !string.IsNullOrEmpty(v.AIEtiketi) && !string.IsNullOrEmpty(v.MLEtiketi) &&
+        string.Equals(v.MLEtiketi, v.AIEtiketi, StringComparison.OrdinalIgnoreCase));
+
+    private float MlGeminiUyum => GeminiAnalizSayi > 0 ? (float)MlGeminiUyumSayi / GeminiAnalizSayi : 0f;
+
+    // --- Filtre sayaçları ---
+    private int MlYanlisCount => Veriler.Count(v =>
+        !string.IsNullOrEmpty(v.MLEtiketi) &&
+        !string.Equals(v.MLEtiketi, v.UzmanEtiketi, StringComparison.OrdinalIgnoreCase));
+
+    private int GeminiYanlisCount => Veriler.Count(v =>
+        !string.IsNullOrEmpty(v.AIEtiketi) &&
+        !string.Equals(v.AIEtiketi, v.UzmanEtiketi, StringComparison.OrdinalIgnoreCase));
+
+    private int HerIkisiYanlisCount => Veriler.Count(v =>
+        !string.IsNullOrEmpty(v.MLEtiketi) && !string.IsNullOrEmpty(v.AIEtiketi) &&
+        !string.Equals(v.MLEtiketi, v.UzmanEtiketi, StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(v.AIEtiketi, v.UzmanEtiketi, StringComparison.OrdinalIgnoreCase));
+
+    private int TamUyumCount => Veriler.Count(v =>
+        !string.IsNullOrEmpty(v.MLEtiketi) && !string.IsNullOrEmpty(v.AIEtiketi) &&
+        string.Equals(v.MLEtiketi, v.UzmanEtiketi, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(v.AIEtiketi, v.UzmanEtiketi, StringComparison.OrdinalIgnoreCase));
+
+    // --- Filtrelenmiş liste ---
+    private IEnumerable<AtakKaydi> FiltreLi => aktifFiltre switch
+    {
+        "ml_yanlis" => Veriler.Where(v =>
+            !string.IsNullOrEmpty(v.MLEtiketi) &&
+            !string.Equals(v.MLEtiketi, v.UzmanEtiketi, StringComparison.OrdinalIgnoreCase)),
+        "gemini_yanlis" => Veriler.Where(v =>
+            !string.IsNullOrEmpty(v.AIEtiketi) &&
+            !string.Equals(v.AIEtiketi, v.UzmanEtiketi, StringComparison.OrdinalIgnoreCase)),
+        "her_ikisi_yanlis" => Veriler.Where(v =>
+            !string.IsNullOrEmpty(v.MLEtiketi) && !string.IsNullOrEmpty(v.AIEtiketi) &&
+            !string.Equals(v.MLEtiketi, v.UzmanEtiketi, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(v.AIEtiketi, v.UzmanEtiketi, StringComparison.OrdinalIgnoreCase)),
+        "tam_uyum" => Veriler.Where(v =>
+            !string.IsNullOrEmpty(v.MLEtiketi) && !string.IsNullOrEmpty(v.AIEtiketi) &&
+            string.Equals(v.MLEtiketi, v.UzmanEtiketi, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(v.AIEtiketi, v.UzmanEtiketi, StringComparison.OrdinalIgnoreCase)),
+        _ => Veriler
+    };
+
+    private void AktifFiltreyiDegistir(string filtre)
+    {
+        aktifFiltre = filtre;
+    }
+
+    private string GetBadgeClass(string etiketi)
+    {
+        if (string.IsNullOrEmpty(etiketi)) return "badge-default";
+        return etiketi.ToLower() switch
+        {
+            var e when e.Contains("hafif") => "badge-success",
+            var e when e.Contains("orta") => "badge-warning",
+            var e when e.Contains("siddetli") || e.Contains("şiddetli") => "badge-danger",
+            _ => "badge-default"
+        };
+    }
+}

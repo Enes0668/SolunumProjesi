@@ -1,0 +1,13 @@
+# API key ve hassas ayarlar
+appsettings.Development.json
+
+# .NET build çıktıları
+bin/
+obj/
+
+# Visual Studio
+.vs/
+*.user
+
+# Rider
+.idea/
