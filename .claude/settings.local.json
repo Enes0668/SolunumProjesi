@@ -1,7 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Bash(dotnet build *)"
+      "Bash(dotnet build *)",
+      "Read(//c/Users/Enes Melih Eroğlu/AppData/Roaming/Claude/local-agent-mode-sessions/skills-plugin/7563e37a-31f1-42b0-bbe3-98ba574a8768/769a2883-fc03-4345-83a1-54e716b08d97/skills/docx/**)",
+      "Bash(pandoc --track-changes=all \"C:\\\\Users\\\\Enes Melih Eroğlu\\\\Desktop\\\\Projeler\\\\SolunumProjesi\\\\Proje_Rapor_Sablonu.docx\" -o output.md)",
+      "Bash(python scripts/office/unpack.py \"C:\\\\Users\\\\Enes Melih Eroğlu\\\\Desktop\\\\Projeler\\\\SolunumProjesi\\\\Proje_Rapor_Sablonu.docx\" unpacked/)",
+      "PowerShell(python3 --version)",
+      "PowerShell(python --version)",
+      "PowerShell(Stop-Process -Name \"SolunumProjesi\" -Force -ErrorAction SilentlyContinue; \\(Get-Content \"C:\\\\Users\\\\Enes Melih Eroğlu\\\\Desktop\\\\Projeler\\\\SolunumProjesi\\\\veriler.csv\" | Measure-Object -Line\\).Lines - 1; \\(Get-Content \"C:\\\\Users\\\\Enes Melih Eroğlu\\\\Desktop\\\\Projeler\\\\SolunumProjesi\\\\ML Mock.csv\" | Measure-Object -Line\\).Lines - 1)"
     ]
   }
 }

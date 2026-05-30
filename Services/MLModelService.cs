@@ -48,6 +48,10 @@ public class MLModelService
     public int EgitimKayitSayisi { get; private set; } = 0;
     public string? HataMesaji { get; private set; }
 
+    // %80/%20 train/test ayrımıyla hesaplanan doğruluk oranı; Egit() sonrası doldurulur
+    public double TestDogrulugu { get; private set; } = 0;
+    public int TestKayitSayisi { get; private set; } = 0;
+
     public MLModelService(IWebHostEnvironment env)
     {
         // Seed sabitlenmesi: her çalıştırmada aynı sonuçları üretmek için
@@ -81,6 +85,9 @@ public class MLModelService
 
             var dataView = _mlContext.Data.LoadFromEnumerable(egitimVerisi);
 
+            // %80 eğitim / %20 test ayrımı; seed sabit tutularak tekrarlanabilir sonuç elde edilir
+            var split = _mlContext.Data.TrainTestSplit(dataView, testFraction: 0.2, seed: 42);
+
             // Pipeline: etiket → sayısal anahtar, kategorik öksürük → one-hot, özellikler birleştir, SDCA ile sınıflandır
             var pipeline = _mlContext.Transforms.Conversion.MapValueToKey("Label")
                 .Append(_mlContext.Transforms.Categorical.OneHotEncoding(
@@ -94,10 +101,21 @@ public class MLModelService
                     labelColumnName: "Label", featureColumnName: "Features"))
                 .Append(_mlContext.Transforms.Conversion.MapKeyToValue("PredictedLabel"));
 
-            var model = pipeline.Fit(dataView);
+            var model = pipeline.Fit(split.TrainSet);
+
+            // Test seti üzerinde doğruluk hesapla
+            var testTahminleri = model.Transform(split.TestSet);
+            var metrikler = _mlContext.MulticlassClassification.Evaluate(testTahminleri, labelColumnName: "Label");
+            TestDogrulugu = metrikler.MacroAccuracy;
+            TestKayitSayisi = split.TestSet.GetRowCount().HasValue ? (int)split.TestSet.GetRowCount()!.Value : 0;
+
+            Console.WriteLine($"Test doğruluğu (MacroAccuracy): {TestDogrulugu:P2}, Test kayıt sayısı: {TestKayitSayisi}");
+
+            // Tahmin motoru için tüm veriyle yeniden eğit (production modeli daha güçlü olsun)
+            var fullModel = pipeline.Fit(dataView);
 
             // Eğitilmiş modelden tek kayıt tahmin edebilen hafif bir motor oluştur
-            _tahminMotoru = _mlContext.Model.CreatePredictionEngine<AtakVeri, AtakTahmini>(model);
+            _tahminMotoru = _mlContext.Model.CreatePredictionEngine<AtakVeri, AtakTahmini>(fullModel);
             ModelEgitildi = true;
 
             Console.WriteLine($"ML modeli eğitildi. Eğitim kayıt sayısı: {EgitimKayitSayisi}");
