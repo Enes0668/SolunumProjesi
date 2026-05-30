@@ -8,19 +8,24 @@ using SolunumProjesi.Models;
 
 namespace SolunumProjesi.Services;
 
+// Google Gemini API'yi kullanarak hasta verilerini analiz eden ve klinik etiket üreten servis
 public class AISimulationService
 {
     private readonly HttpClient _httpClient;
     private readonly string _apiKey;
+
+    // Gemini 2.5 Flash modeline istek gönderilecek endpoint
     private const string GeminiEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 
     public AISimulationService(HttpClient httpClient, IConfiguration configuration)
     {
         _httpClient = httpClient;
+        // API anahtarı appsettings.Development.json'dan okunur; eksikse uygulama başlamaz
         _apiKey = configuration["GeminiApiKey"]
             ?? throw new InvalidOperationException("GeminiApiKey, appsettings.Development.json içinde bulunamadı.");
     }
 
+    // Seçilen hasta kaydını Gemini'ye gönderir; etiket ve klinik gerekçe döner
     public async Task<(string Etiket, string Gerekce)> AnalizYapAsync(AtakKaydi kayit)
     {
         try
@@ -41,6 +46,7 @@ Lütfen cevabını SADECE aşağıdaki JSON formatında, hiçbir markdown etiket
   ""Gerekce"": ""Klinik açıklama ve uzmanla görüş karşılaştırması buraya...""
 }}";
 
+            // Gemini'ye gönderilecek istek gövdesi; responseMimeType ile JSON çıktısı zorunlu kılınır
             var requestBody = new
             {
                 contents = new[]
@@ -56,6 +62,7 @@ Lütfen cevabını SADECE aşağıdaki JSON formatında, hiçbir markdown etiket
                 }
             };
 
+            // API anahtarı URL'e query string olarak eklenir
             var url = $"{GeminiEndpoint}?key={_apiKey}";
             var response = await _httpClient.PostAsJsonAsync(url, requestBody);
 
@@ -69,6 +76,7 @@ Lütfen cevabını SADECE aşağıdaki JSON formatında, hiçbir markdown etiket
             var responseJson = await response.Content.ReadAsStringAsync();
             var jsonDocument = JsonDocument.Parse(responseJson);
 
+            // Gemini yanıtı candidates[0].content.parts[0].text yolunda bulunur
             var root = jsonDocument.RootElement;
             var responseText = root
                 .GetProperty("candidates")[0]
@@ -81,8 +89,9 @@ Lütfen cevabını SADECE aşağıdaki JSON formatında, hiçbir markdown etiket
                 return ("Hata", "API boş bir yanıt döndürdü.");
             }
 
+            // Yanıt metnindeki olası markdown kod bloğu işaretlerini temizleyip JSON olarak ayrıştır
             var aiResult = JsonDocument.Parse(responseText.Trim('`', '\n', ' ')).RootElement;
-            
+
             var etiket = aiResult.TryGetProperty("Etiket", out var etiketElement) ? etiketElement.GetString() : "Bilinmiyor";
             var gerekce = aiResult.TryGetProperty("Gerekce", out var gerekceElement) ? gerekceElement.GetString() : "Gerekçe okunamadı.";
 

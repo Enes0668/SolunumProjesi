@@ -33,10 +33,15 @@ internal sealed class MockCsvSatir
     public string expert_label { get; set; } = "";
 }
 
+// ML.NET kullanarak solunum atağı şiddetini sınıflandıran servis
 public class MLModelService
 {
     private readonly MLContext _mlContext;
+
+    // Modelin eğitileceği hazır veri dosyasının yolu
     private readonly string _mockCsvPath;
+
+    // Eğitim tamamlanınca oluşturulan tahmin motoru; CSV yüklendikçe kullanılır
     private PredictionEngine<AtakVeri, AtakTahmini>? _tahminMotoru;
 
     public bool ModelEgitildi { get; private set; } = false;
@@ -45,10 +50,12 @@ public class MLModelService
 
     public MLModelService(IWebHostEnvironment env)
     {
+        // Seed sabitlenmesi: her çalıştırmada aynı sonuçları üretmek için
         _mlContext = new MLContext(seed: 42);
         _mockCsvPath = Path.Combine(env.ContentRootPath, "ML Mock.csv");
     }
 
+    // Modeli ML Mock.csv verisiyle eğitir; uygulama başladığında Program.cs tarafından çağrılır
     public void Egit()
     {
         ModelEgitildi = false;
@@ -74,6 +81,7 @@ public class MLModelService
 
             var dataView = _mlContext.Data.LoadFromEnumerable(egitimVerisi);
 
+            // Pipeline: etiket → sayısal anahtar, kategorik öksürük → one-hot, özellikler birleştir, SDCA ile sınıflandır
             var pipeline = _mlContext.Transforms.Conversion.MapValueToKey("Label")
                 .Append(_mlContext.Transforms.Categorical.OneHotEncoding(
                     "OksurukSikligiEncoded", nameof(AtakVeri.OksurukSikligi)))
@@ -87,6 +95,8 @@ public class MLModelService
                 .Append(_mlContext.Transforms.Conversion.MapKeyToValue("PredictedLabel"));
 
             var model = pipeline.Fit(dataView);
+
+            // Eğitilmiş modelden tek kayıt tahmin edebilen hafif bir motor oluştur
             _tahminMotoru = _mlContext.Model.CreatePredictionEngine<AtakVeri, AtakTahmini>(model);
             ModelEgitildi = true;
 
@@ -99,12 +109,14 @@ public class MLModelService
         }
     }
 
+    // Yüklenen hasta listesinin her kaydı için MLEtiketi alanını doldurur
     public void TahminEt(List<AtakKaydi> veriler)
     {
         if (!ModelEgitildi || _tahminMotoru == null || veriler == null) return;
 
         foreach (var kayit in veriler)
         {
+            // AtakKaydi → AtakVeri dönüşümü; bool gece uyanması 0/1 float'a çevrilir
             var veri = new AtakVeri
             {
                 PeakFlow = kayit.PeakFlowValue,
@@ -117,6 +129,7 @@ public class MLModelService
         }
     }
 
+    // ML Mock.csv'yi okur ve eğitim için AtakVeri listesine dönüştürür
     private List<AtakVeri> OkuMockCsv()
     {
         var config = new CsvConfiguration(CultureInfo.InvariantCulture)
@@ -135,6 +148,7 @@ public class MLModelService
                 PeakFlow = r.peak_flow_value,
                 OksurukSikligi = r.cough_frequency ?? "",
                 NefesDarligi = r.shortness_of_breath,
+                // CSV'de "true"/"false" string olarak geliyor; float'a çevir
                 GeceUyanmasi = r.night_waking?.ToLower() == "true" ? 1f : 0f,
                 Etiket = r.expert_label ?? ""
             })
